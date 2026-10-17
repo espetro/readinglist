@@ -18,6 +18,10 @@ jobs:
     env:
       APP_BUNDLE: Reading List.app
       ARCH_FLAGS: --arch arm64 --arch x86_64
+      # Empty when the signing secrets are not configured — steps below
+      # degrade to ad-hoc signing instead of failing.
+      DEVELOPER_ID_APPLICATION: ${{ secrets.DEVELOPER_ID_APPLICATION }}
+      DEVELOPER_ID_CERTIFICATE_BASE64: ${{ secrets.DEVELOPER_ID_CERTIFICATE_BASE64 }}
     steps:
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode_26.3.app
@@ -30,6 +34,7 @@ jobs:
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       - name: Import signing certificate
+        if: env.DEVELOPER_ID_CERTIFICATE_BASE64 != ''
         env:
           CERTIFICATE_BASE64: ${{ secrets.DEVELOPER_ID_CERTIFICATE_BASE64 }}
           CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
@@ -108,19 +113,23 @@ jobs:
           ls -la "$APP_BUNDLE/Contents/MacOS/"
 
       - name: Sign app
-        env:
-          DEVELOPER_ID_APPLICATION: ${{ secrets.DEVELOPER_ID_APPLICATION }}
         run: |
-          codesign --force \
-            --sign "$DEVELOPER_ID_APPLICATION" \
-            --entitlements Entitlements.plist \
-            --options runtime \
-            --timestamp \
-            "$APP_BUNDLE"
-
-          codesign --verify --strict "$APP_BUNDLE"
+          if [ -n "$DEVELOPER_ID_APPLICATION" ]; then
+            codesign --force \
+              --sign "$DEVELOPER_ID_APPLICATION" \
+              --entitlements Entitlements.plist \
+              --options runtime \
+              --timestamp \
+              "$APP_BUNDLE"
+            codesign --verify --strict "$APP_BUNDLE"
+          else
+            # No Developer ID configured: ad-hoc sign so the app at least
+            # launches locally (Gatekeeper quarantine still applies).
+            codesign --force --deep --sign - "$APP_BUNDLE"
+          fi
 
       - name: Notarize app
+        if: env.DEVELOPER_ID_APPLICATION != ''
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
@@ -153,7 +162,9 @@ jobs:
             -format UDZO \
             "Reading-List-${VERSION}.dmg"
 
-          codesign --force --sign "$DEVELOPER_ID_APPLICATION" --timestamp "Reading-List-${VERSION}.dmg"
+          if [ -n "$DEVELOPER_ID_APPLICATION" ]; then
+            codesign --force --sign "$DEVELOPER_ID_APPLICATION" --timestamp "Reading-List-${VERSION}.dmg"
+          fi
           rm -rf dmg-staging
 
       - name: Create ZIP
