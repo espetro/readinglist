@@ -15,6 +15,9 @@ jobs:
   build-and-release:
     name: Build, sign, notarize, and release
     runs-on: macos-15
+    # Requires approval from the gh-publish environment's reviewers
+    # before the build starts.
+    environment: gh-publish
     env:
       APP_BUNDLE: Reading List.app
       ARCH_FLAGS: --arch arm64 --arch x86_64
