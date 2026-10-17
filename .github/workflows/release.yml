@@ -4,6 +4,9 @@ on:
   push:
     tags:
       - 'v*'
+  # Allow `gh workflow run release.yml --ref vX.Y.Z` when a tag was created
+  # via API/git-proxy and the tag push event never fired.
+  workflow_dispatch:
 
 permissions:
   contents: write
